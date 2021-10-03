@@ -2,14 +2,14 @@
 // import babel from 'rollup-plugin-babel';
 // import eslint from 'rollup-plugin-eslint';
 // import resolve from 'rollup-plugin-node-resolve';
-// import commonjs from 'rollup-plugin-commonjs';
+import commonjs from 'rollup-plugin-commonjs';
 // import replace from 'rollup-plugin-replace';
 import { uglify } from "rollup-plugin-uglify";
 
 export default {
-  input: "lib/Autopilot.js",
+  input: "lib/main.js",
   output: {
-    file: "dist/autopilot.min.js",
+    file: "dist/bundle.min.js",
     format: "cjs",
   },
   // dest: "dist/autopilot.min.js",
@@ -21,7 +21,7 @@ export default {
     //   main: true,
     //   browser: true,
     // }),
-    // commonjs(),
+    commonjs(),
     // eslint({
     //   exclude: ['src/styles/**'],
     // }),

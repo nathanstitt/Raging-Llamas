@@ -9,7 +9,7 @@
   //   21025
   // ],
   // Set *default* container specific settings.json values on container create.
-  "workspaceMount": "source=${localWorkspaceFolder},target=/code,type=bind,consistency=default",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/code,type=bind,consistency=cached",
   "workspaceFolder": "/code",
   "settings": {
     "terminal.integrated.shell.linux": null
