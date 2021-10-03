@@ -1,8 +1,102 @@
-import { AdvancedState } from "./AdvancedState";
-import { Constants } from "./main";
-import { OriginFinder } from "./OriginFinder";
+'use strict';
 
-export class Autopilot {
+Object.defineProperty(exports, '__esModule', { value: true });
+
+class AdvancedState {
+  constructor(state) {
+    this.state = state;
+    this.absoluteRadarAngle = Math.deg.normalize(
+      this.state.radar.angle + this.state.angle
+    );
+    this.position = { x: state.x, y: state.y };
+  }
+
+  orientationString() {
+    return `${this.state.x}${this.state.y}${this.state.angle}${this.state.radar.angle}`;
+  }
+
+  getPointAtDistanceAlongRadar(distance) {
+    return {
+      x:
+        this.state.x +
+        Math.cos((this.absoluteRadarAngle * Math.PI) / 180) * distance,
+      y:
+        this.state.y +
+        Math.sin((this.absoluteRadarAngle * Math.PI) / 180) * distance,
+    };
+  }
+}
+
+const BATTLEFIELD_WIDTH = 850;
+const BATTLEFIELD_HEIGHT = 550;
+const SOUTH = 90;
+const NORTH = -90;
+const WEST = -180;
+const EAST = 0;
+const TANK_WIDTH=36;
+
+var Constants = /*#__PURE__*/Object.freeze({
+  __proto__: null,
+  BATTLEFIELD_WIDTH: BATTLEFIELD_WIDTH,
+  BATTLEFIELD_HEIGHT: BATTLEFIELD_HEIGHT,
+  SOUTH: SOUTH,
+  NORTH: NORTH,
+  WEST: WEST,
+  EAST: EAST,
+  TANK_WIDTH: TANK_WIDTH
+});
+
+Number.prototype.isWhole = function (tolerance = 0.00000001) {
+  return Math.abs(Math.round(this) - this) < tolerance;
+};
+
+// Track when we see the same X or Y values repeat on subsequent wall detections,
+// use that to say a wall exists at those X or Y values and then based on which
+// way the radar is pointing, calculate the origin point from them.
+//
+class OriginFinder {
+  constructor() {
+    this.origin = { x: undefined, y: undefined };
+    this.lastX = undefined;
+    this.lastY = undefined;
+    this.lastOrientation = undefined;
+  }
+
+  update(advancedState) {
+    if (this.origin.x && this.origin.y) { return }
+
+    // If we don't see a wall, there's no info to work with
+    let wallDistance = advancedState.state.radar.wallDistance;
+    if (!wallDistance) { return }
+
+    let orientationChanged =
+      this.lastOrientation && this.lastOrientation != advancedState.orientationString();
+
+    this.lastOrientation = advancedState.orientationString();
+
+    let point = advancedState.getPointAtDistanceAlongRadar(wallDistance);
+
+    if (!this.origin.x && point.x.isWhole()) {
+      if (this.lastX && this.lastX == Math.round(point.x) && orientationChanged) {
+        this.origin.x =
+          this.lastX -
+          (Math.abs(advancedState.absoluteRadarAngle) >= 90 ? 0 : BATTLEFIELD_WIDTH);
+      }
+      this.lastX = Math.round(point.x);
+    }
+
+    if (!this.origin.y && point.y.isWhole()) {
+      if (this.lastY && this.lastY == Math.round(point.y) && orientationChanged) {
+        this.origin.y =
+          this.lastY -
+          (advancedState.absoluteRadarAngle > 0 ? BATTLEFIELD_HEIGHT : 0);
+      }
+      this.lastY = Math.round(point.y);
+    }
+  }
+}
+
+class Autopilot {
   constructor() {
     this.originFinder = new OriginFinder();
     this.origin = this.originFinder.origin;
@@ -48,9 +142,9 @@ export class Autopilot {
 
     return (
       positionInTicks.x <= this.origin.x ||
-      positionInTicks.x >= this.origin.x + Constants.BATTLEFIELD_WIDTH ||
+      positionInTicks.x >= this.origin.x + BATTLEFIELD_WIDTH ||
       positionInTicks.y <= this.origin.y ||
-      positionInTicks.y >= this.origin.y + Constants.BATTLEFIELD_HEIGHT
+      positionInTicks.y >= this.origin.y + BATTLEFIELD_HEIGHT
     )
   }
 
@@ -74,7 +168,7 @@ export class Autopilot {
 
     let translatedX = x + (basedOnZeroOrigin ? this.origin.x : 0);
     let translatedY = y + (basedOnZeroOrigin ? this.origin.y : 0);
-    let angle = Math.deg.atan2(translatedY - this.state.y, translatedX - this.state.x)
+    let angle = Math.deg.atan2(translatedY - this.state.y, translatedX - this.state.x);
     return this.turnToAngle(angle);
   }
 
@@ -110,7 +204,7 @@ export class Autopilot {
         this.path.forEach((position) => {
           position.x += this.origin.x;
           position.y += this.origin.y;
-        })
+        });
       }
     }
 
@@ -125,7 +219,7 @@ export class Autopilot {
       this.path.push(this.nextPosition);
     }
 
-    this.moveToPoint(this.nextPosition.x, this.nextPosition.y)
+    this.moveToPoint(this.nextPosition.x, this.nextPosition.y);
   }
 
   stopLoopOnPath() {
@@ -145,9 +239,9 @@ export class Autopilot {
 
     // predict position of moving target
     let bulletSpeed = 4;
-    let distance = Math.distance(this.state.x, this.state.y, enemy.x, enemy.y)
+    let distance = Math.distance(this.state.x, this.state.y, enemy.x, enemy.y);
     let bulletTime = distance / bulletSpeed;
-    let target = Autopilot.extrapolatedPosition(enemy, enemy.angle, enemy.speed, bulletTime)
+    let target = Autopilot.extrapolatedPosition(enemy, enemy.angle, enemy.speed, bulletTime);
 
     // calculate desired direction of the gun
     let targetAngle = Math.deg.atan2(target.y - this.state.y, target.x - this.state.x);
@@ -170,8 +264,8 @@ export class Autopilot {
   extrapolatedOuterPosition(inTicks) {
     let extrapolatedPosition = this.extrapolatedPosition(inTicks);
     return {
-      x: extrapolatedPosition.x + Math.sqrt(2) * Constants.TANK_WIDTH / 2 * (Math.abs(this.state.angle) >= 90 ? -1 : 1 ),
-      y: extrapolatedPosition.y + Math.sqrt(2) * Constants.TANK_WIDTH / 2 * (this.state.angle < 0 ? -1 : 1),
+      x: extrapolatedPosition.x + Math.sqrt(2) * TANK_WIDTH / 2 * (Math.abs(this.state.angle) >= 90 ? -1 : 1 ),
+      y: extrapolatedPosition.y + Math.sqrt(2) * TANK_WIDTH / 2 * (this.state.angle < 0 ? -1 : 1),
     }
   }
 
@@ -186,3 +280,6 @@ export class Autopilot {
     }
   }
 }
+
+exports.Autopilot = Autopilot;
+exports.Constants = Constants;

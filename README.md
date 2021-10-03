@@ -1,3 +1,64 @@
+# JP's notes
+
+Run this in VSCode, using the provided devcontainer.
+
+`yarn jest --watch`
+
+`rollup -c` to build a minified version, then strip off the "use strict" at the front and the export at the end.  Copy remainder into a tank script.
+
+`yard add blah --dev` when new packages needed.
+
+
+# Usage
+
+Copy the `bundle/bundle.min.js` into your JS Battle tank script.  Remove
+
+```js
+"use strict";Object.defineProperty(exports,"__esModule",{value:!0});
+```
+
+from the front and remove
+
+```js
+exports.Autopilot=Autopilot,exports.Constants=Constants;
+```
+
+from the end after you paste it in.
+
+See `bundle/bundle.js` for a non-minified version. Then in your tank script (below where you pasted the bundle), say:
+
+```js
+let autopilot = new Autopilot();
+
+tank.loop(function(state, control) {
+	autopilot.update(state, control);
+
+  // your code here
+```
+
+The `Autopilot` object gives you some utility functions to help you build your tank:
+
+* After your radar has scanned a horizontal and vertical wall, the autopilot will have calculated the battlefield origin for you.  You can access it with `autopilot.origin`.  `autopilot.isOriginKnown()` will return true when the origin is available.
+* If you know the origin through other means (e.g. from your teammates), you can set it with `setOrigin(x,y)`.
+* `lookEverywhere` sets your radar to spin at max speed.
+* `lookAtEnemy(enemy)` locks your radar onto an enemy.  `enemy` is an object with `x` and `y` coordinates.
+* `isWallCollisionImminent(inTicks=3)` returns true if it looks like your tank will hit a wall in the number of ticks provided.
+* `turnToAngle(angle)` turns your bot to the given absolute angle.  Returns the angle remaining to turn.
+* `turnToPoint(x,y,baseOnZeroOrigin=false)` will turn your tank to face the given coordinates.  If the origin is known and you set `baseOnZeroOrigin` to true, you can give coordinates assuming the origin is (0,0). Returns the angle remaining to turn.
+* `moveToPoint(x,y,baseOnZeroOrigin=false)` will move your bot to the provided coordinates.  If the origin is known and you set `baseOnZeroOrigin` to true, you can give coordinates assuming the origin is (0,0).
+* `moveAlongAngle(angle)` moves your tank in the given direction.  You can use constants here, e.g. `moveAlongAngle(Constants.EAST)`.
+* `loopOnPath(positions, basedOnZeroOrigin, tolerance=50)` cycles through an array of `{x:, y:}` positions, which can be based on zero origin if the origin is known.  The `tolerance` says how close is close enough to say we've made it to one of the positions.
+* `stopLoopOnPath()` clears a `loopOnPath` call.
+* `stop()` stops the turn, throttle, and boost.
+* `shootEnemy()` shoots the enemy (enemy object from the `state`), using a predictive aim based on the enemy's speed and angle.
+* `extrapolatedPosition(inTicks)` gives your bot's linear extrapolated position in the given number of ticks.  May not totally account for speed that is ramping up or slowing down.
+* `extrapolatedOuterPosition(inTicks)` is the same as the above except it uses a circle around the tank to give the position (to help with collision detection)
+* `speed()` gives the tank's speed.
+* `Autopilot.extrapolatedPosition(startPosition, travelAngle, travelSpeed, inTicks)` computes a general linear extrapolated position.
+
+
+
+
 # javascript-library-template [![GitHub license](https://img.shields.io/github/license/vvo/javascript-library-template?style=flat)](https://github.com/vvo/javascript-library-template/blob/master/LICENSE) [![Tests](https://github.com/vvo/javascript-library-template/workflows/CI/badge.svg)](https://github.com/vvo/javascript-library-template/actions) [![codecov](https://codecov.io/gh/vvo/javascript-library-template/branch/master/graph/badge.svg)](https://codecov.io/gh/vvo/javascript-library-template) ![npm](https://img.shields.io/npm/v/javascript-library-template) [![minizipped size](https://badgen.net/bundlephobia/minzip/javascript-library-template)](https://bundlephobia.com/result?p=javascript-library-template)
 
 <p align="center">
