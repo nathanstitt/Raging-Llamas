@@ -8,7 +8,7 @@ Run this in VSCode, using the provided devcontainer.
 
 `yard add blah --dev` when new packages needed.
 
-# Nathan's notes
+# Nathan‘s notes
 
 * install libraries with: `yarn install`
 * test code by running in browser: `yarn start`
