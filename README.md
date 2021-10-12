@@ -8,6 +8,15 @@ Run this in VSCode, using the provided devcontainer.
 
 `yard add blah --dev` when new packages needed.
 
+# Nathan's notes
+
+* install libraries with: `yarn install`
+* test code by running in browser: `yarn start`
+  * stimulation will open in your default browser and restart after every code change
+  * future improvement will be to store selected competitor in localStorage and re-use it after reload
+* Add your code to `main.js`, after saving it the browser should reload so you can view results immediatly
+* Build code for copy'n'paste to competition: `yarn build`
+* Code will be built ininto a `dist/index.<hash>.js` file, copy from it
 
 # Usage
 

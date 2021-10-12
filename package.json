@@ -1,7 +1,7 @@
 {
   "name": "jsb-autopilot",
   "version": "0.0.0-development",
-  "private": false,
+  "private": true,
   "description": "JavaScript library template to focus on ⌨️ coding, 🙌 collaborating and 🚀 shipping",
   "repository": {
     "type": "git",
@@ -19,6 +19,7 @@
     "README.md"
   ],
   "scripts": {
+    "start": "vite",
     "build": "babel lib/ -d dist/ --source-maps --ignore '**/*.test.js' --delete-dir-on-start",
     "format": "prettier --write '**/*.*' && eslint . --fix",
     "lint": "prettier --check '**/*.*' && eslint .",
@@ -72,7 +73,9 @@
     }
   },
   "jest": {},
-  "dependencies": {},
+  "dependencies": {
+    "vite": "^2.6.7"
+  },
   "devDependencies": {
     "@babel/cli": "7.12.17",
     "@babel/core": "7.12.17",
