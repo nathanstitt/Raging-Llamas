@@ -8,7 +8,16 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
 
 // YOUR CODE GOES BELOW vvvvvvvv
 
+  const STRATEGIES = {
+    DODGE: 1,
+    SEEK: 2,
+  }
 
+  const SKINS = {
+    1: 'lava',
+    2: 'forest',
+    3: 'desert',
+  }
   const DIRECTIONS = {
     1: 90,
     2: 180,
@@ -16,19 +25,105 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     4: 0, // won't have 4th tank "for real", but demo controls let you pick it
   }
 
-  tank.init(function(settings, info) {
-    tank.id = info.id
-    tank.isAtWall = false
+  // global vars to store state of tank
+  let ap,
+      id,
+      turnDirection,
+      turnTimer,
+      direction,
+      collisionCoord = false,
+      circleSize
 
-    tank.ap = new Autopilot();
+  tank.init(function(settings, info) {
+    id = info.id
+    settings.SKIN = SKINS[id]
+    ap = new Autopilot();
+
+    turnDirection = Math.random() < 0.5 ? 1 : -1;
+    circleSize = 0.8
+    turnTimer = 0
+    direction = 1
+    backTimer = 0;
   });
 
-  tank.loop(function(state, control) {
-    tank.ap.update(state,control)
-    if (!tank.isAtWall) {
-      tank.ap.turnToAngle(DIRECTIONS[tank.id])
+  function readInbox(state) {
+    msgs = state.radio.inbox
+    if (!msgs || !msgs.length) {
+      return
     }
-    control.THROTTLE = 1;
+    msgs.forEach(msg => {
+      if (msg.origin) {
+        ap.setOrigin(msg.origin.x, msg.origin.y)
+      }
+    })
+  }
+  function circleTheBoard(state, control) {
+    control.RADAR_TURN = 1
+    if(ap.isWallCollisionImminent(1)) {
+      control.TURN = state.angle + 110
+      control.THROTTLE = 0.5
+      return
+    }
+
+    if (state.angle < 4 && state.angle > -4) {
+      circleSize -= 0.1
+      control.TURN = 4
+    }
+
+    if (circleSize < 0) {
+      circleSize = 0.8
+    }
+
+    if(turnTimer > 0) {
+      turnTimer--;
+      control.THROTTLE = 0;
+      control.TURN = turnDirection * -1;
+
+    } else {
+      control.THROTTLE = direction;
+      control.TURN = circleSize
+    }
+  }
+
+  function targetEnemy(state) {
+    const distance = Math.distance(state.x, state.y, state.radar.enemy.x, state.radar.enemy.y)
+    ap.lookAtEnemy(state.radar.enemy)
+    if (distance > 150) {
+      ap.moveToPoint(state.radar.enemy.x, state.radar.enemy.y)
+    }
+    ap.shootEnemy(state.radar.enemy)
+  }
+
+  tank.loop(function(state, control) {
+    const wasOriginknown = ap.isOriginKnown()
+
+    ap.update(state, control)
+    readInbox(state)
+
+    if (!wasOriginknown && ap.isOriginKnown()) {
+      control.OUTBOX.push({
+        origin: ap.origin,
+      })
+    }
+
+    if (state.collisions.ally) {
+      control.TURN = state.angle + ((Math.random() * 20) - 10)
+      collisionCoord = { x: state.x, y: state.y }
+    }
+    if (collisionCoord) {
+      control.THROTTLE = -1
+      if (Math.distance(collisionCoord.x, collisionCoord.y, state.x, state.y) > 50) {
+        collisionCoord = false
+      }
+      return
+    }
+
+    if(state.radar.enemy) {
+      targetEnemy(state, control)
+    } else {
+      circleTheBoard(state, control)
+    }
+
 
   });
 
