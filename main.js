@@ -54,19 +54,21 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     })
   }
 
+  function distanceTo(state, object) {
+    return Math.distance(state.x, state.y, object.x, object.y)
+  }
+
   function readInbox(state) {
     const msgs = state.radio.inbox
     if (!msgs || !msgs.length) {
       return
     }
-//    console.log(msgs)
+
     msgs.forEach(msg => {
-      console.log(msg)
       if (msg.origin) {
         ap.setOrigin(msg.origin.x, msg.origin.y)
       }
       if (msg.enemyDiscovered) {
-        console.log("TARGETING: ", id, msg.enemyDiscovered)
         targetedEnemy = msg.enemyDiscovered
       }
     })
@@ -102,7 +104,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
   }
 
   function targetEnemy(enemy, state, control) {
-    const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
+    const eDistance = distanceTo(state, enemy)
     ap.lookAtEnemy(enemy)
 
     if (eDistance > 150) {
@@ -111,8 +113,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       control.THROTTLE = 0 // <- CIRCLE HERE
     }
 
-    const aDistance = state.radar.ally ?
-          Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
+    const aDistance = state.radar.ally ? distanceTo(state, state.radar.ally) : 0
 
     if ( !aDistance || eDistance < aDistance ) {
       ap.shootEnemy(enemy)
@@ -121,7 +122,6 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
 
   tank.loop(function(state, control) {
     const wasOriginknown = ap.isOriginKnown()
-    const wasTargeting = state.radar.enemy
 
     ap.update(state, control)
     readInbox(state)
@@ -138,21 +138,27 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
     if (collisionCoord) {
       control.THROTTLE = -1
-      if (Math.distance(collisionCoord.x, collisionCoord.y, state.x, state.y) > 50) {
+      if (distanceTo(state, collisionCoord) > 50) {
         collisionCoord = false
+      } else {
+        return
       }
-      return
     }
 
     if(state.radar.enemy) {
-      if (!wasTargeting) {
+      if (!targetedEnemy) {
         onNewEnemyDiscovered(state.radar.enemy, control)
-      } else {
-        targetedEnemy = false
       }
       targetEnemy(state.radar.enemy, state, control)
     } else if (targetedEnemy) {
-      targetEnemy(targetedEnemy, state, control)
+      // we should have enemy on radar at this point and would be handled by above if stmt
+      // give up if we haven't spotted it yet
+      if (distanceTo(state, targetedEnemy) < 200) {
+        targetedEnemy = false
+        circleTheBoard(state, control)
+      } else {
+        targetEnemy(targetedEnemy, state, control)
+      }
     } else {
       circleTheBoard(state, control)
     }
