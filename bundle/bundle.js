@@ -234,12 +234,14 @@ class Autopilot {
     this.control.BOOST = 0;
   }
 
-  shootEnemy(enemy) {
+  shootEnemy(enemy, maxDistance = 300) {
     if (!enemy) { return }
 
     // predict position of moving target
     let bulletSpeed = 4;
     let distance = Math.distance(this.state.x, this.state.y, enemy.x, enemy.y);
+
+
     let bulletTime = distance / bulletSpeed;
     let target = Autopilot.extrapolatedPosition(enemy, enemy.angle, enemy.speed, bulletTime);
 
@@ -253,7 +255,11 @@ class Autopilot {
 
     // shoot when aiming at target
     if(Math.abs(angleDiff) < 2) {
-      this.control.SHOOT = 0.1;
+
+      const bulletSize = (distance > maxDistance) ? 0.1 :
+            1.0 - (distance / maxDistance);
+
+      this.control.SHOOT = bulletSize;
     }
   }
 
