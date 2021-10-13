@@ -31,6 +31,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       turnDirection,
       turnTimer,
       direction,
+      targetedEnemy,
       collisionCoord = false,
       circleSize
 
@@ -39,29 +40,44 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     settings.SKIN = SKINS[id]
     ap = new Autopilot();
 
-    turnDirection = Math.random() < 0.5 ? 1 : -1;
+    turnDirection = DIRECTIONS[id] // Math.random() < 0.5 ? 1 : -1;
     circleSize = 0.8
     turnTimer = 0
     direction = 1
-    backTimer = 0;
+
   });
 
+
+  function onNewEnemyDiscovered(enemy, control) {
+    control.OUTBOX.push({
+      enemyDiscovered: enemy
+    })
+  }
+
   function readInbox(state) {
-    msgs = state.radio.inbox
+    const msgs = state.radio.inbox
     if (!msgs || !msgs.length) {
       return
     }
+//    console.log(msgs)
     msgs.forEach(msg => {
+      console.log(msg)
       if (msg.origin) {
         ap.setOrigin(msg.origin.x, msg.origin.y)
+      }
+      if (msg.enemyDiscovered) {
+        console.log("TARGETING: ", id, msg.enemyDiscovered)
+        targetedEnemy = msg.enemyDiscovered
       }
     })
   }
   function circleTheBoard(state, control) {
     control.RADAR_TURN = 1
-    if(ap.isWallCollisionImminent(1)) {
-      control.TURN = state.angle + 110
-      control.THROTTLE = 0.5
+
+    if( (state.radar.wallDistance && state.radar.wallDistance < 50) || state.collisions.wall ) {
+      control.THROTTLE = -1;
+      control.TURN = 45;
+      control.BOOST = 1;
       return
     }
 
@@ -85,17 +101,27 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
   }
 
-  function targetEnemy(state) {
-    const distance = Math.distance(state.x, state.y, state.radar.enemy.x, state.radar.enemy.y)
-    ap.lookAtEnemy(state.radar.enemy)
-    if (distance > 150) {
-      ap.moveToPoint(state.radar.enemy.x, state.radar.enemy.y)
+  function targetEnemy(enemy, state, control) {
+    const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
+    ap.lookAtEnemy(enemy)
+
+    if (eDistance > 150) {
+      ap.moveToPoint(enemy.x, enemy.y)
+    } else {
+      control.THROTTLE = 0 // <- CIRCLE HERE
     }
-    ap.shootEnemy(state.radar.enemy)
+
+    const aDistance = state.radar.ally ?
+          Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
+
+    if ( !aDistance || eDistance < aDistance ) {
+      ap.shootEnemy(enemy)
+    }
   }
 
   tank.loop(function(state, control) {
     const wasOriginknown = ap.isOriginKnown()
+    const wasTargeting = state.radar.enemy
 
     ap.update(state, control)
     readInbox(state)
@@ -119,7 +145,14 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
 
     if(state.radar.enemy) {
-      targetEnemy(state, control)
+      if (!wasTargeting) {
+        onNewEnemyDiscovered(state.radar.enemy, control)
+      } else {
+        targetedEnemy = false
+      }
+      targetEnemy(state.radar.enemy, state, control)
+    } else if (targetedEnemy) {
+      targetEnemy(targetedEnemy, state, control)
     } else {
       circleTheBoard(state, control)
     }
