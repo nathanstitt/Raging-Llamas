@@ -33,7 +33,8 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       direction,
       targetedEnemy,
       collisionCoord = false,
-      circleSize
+      circleSize,
+      bodyAngleDelta
 
   tank.init(function(settings, info) {
     id = info.id
@@ -103,17 +104,25 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
   }
 
-  function targetEnemy(enemy, state, control) {
-    const eDistance = distanceTo(state, enemy)
+function targetEnemy(enemy, state, control) {
+    const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
     ap.lookAtEnemy(enemy)
+		var enemyAngle = Math.deg.atan2(
+      enemy.y - state.y,
+      enemy.x - state.x
+    )
 
     if (eDistance > 150) {
       ap.moveToPoint(enemy.x, enemy.y)
     } else {
-      control.THROTTLE = 0 // <- CIRCLE HERE
+      control.THROTTLE = 1 // <- CIRCLE HERE
+      bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
+      if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180 };
+    control.TURN = bodyAngleDelta * 0.2;
     }
 
-    const aDistance = state.radar.ally ? distanceTo(state, state.radar.ally) : 0
+    const aDistance = state.radar.ally ?
+          Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
 
     if ( !aDistance || eDistance < aDistance ) {
       ap.shootEnemy(enemy)
