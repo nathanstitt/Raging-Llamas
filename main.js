@@ -35,7 +35,8 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       targetedEnemy,
       collisionCoord = false,
       flop = 1,
-      circleSize,
+      searchingTurnRadius = 0,
+      searchBoost = 200,
       bodyAngleDelta
 
   tank.init(function(settings, info) {
@@ -44,7 +45,6 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     ap = new Autopilot();
 
     turnDirection = DIRECTIONS[id] // Math.random() < 0.5 ? 1 : -1;
-    circleSize = 0.8
     turnTimer = 0
     direction = 1
 
@@ -76,37 +76,30 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       }
     })
   }
-  function circleTheBoard(state, control) {
+  function searchTheBoard(state, control) {
     control.RADAR_TURN = 1
-
-    if( (state.radar.wallDistance && state.radar.wallDistance < 50) || state.collisions.wall ) {
-      control.THROTTLE = -1;
-      control.TURN = 45;
-      control.BOOST = 1;
-      return
+    if (searchBoost) {
+      control.BOOST = 1
     }
-
-    if (state.angle < 4 && state.angle > -4) {
-      circleSize -= 0.1
-      control.TURN = 4
-    }
-
-    if (circleSize < 0) {
-      circleSize = 0.8
-    }
-
-    if(turnTimer > 0) {
-      turnTimer--;
-      control.THROTTLE = 0;
-      control.TURN = turnDirection * -1;
-
+    if (searchingTurnRadius > 0) {
+      searchBoost = 100
+      control.TURN = -1.0
+      searchingTurnRadius -= 1
+      control.THROTTLE = 0.0
     } else {
-      control.THROTTLE = direction;
-      control.TURN = circleSize
+      if (searchBoost) {
+        searchBoost -= 1
+      }
+      control.TURN = 0.0
+      control.THROTTLE = 1.0
+      if (state.collisions.wall || ap.isWallCollisionImminent(1)) {
+        searchingTurnRadius = Math.randomRange(45, 90)
+      }
     }
   }
 
 function targetEnemy(enemy, state, control) {
+    searchBoost = 0
     const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
     ap.lookAtEnemy(enemy)
 		var enemyAngle = Math.deg.atan2(
@@ -123,14 +116,14 @@ function targetEnemy(enemy, state, control) {
     }
     // <- CIRCLE HERE
     bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
-    if(Math.abs(bodyAngleDelta) > 90) bodyAngleDelta += 180;
+    if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180; }
     control.TURN = bodyAngleDelta * 0.2;
   }
 
     const aDistance = state.radar.ally ?
           Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
 
-    if ( !aDistance || eDistance < aDistance ) {
+  if ( (!aDistance) || eDistance < aDistance ) {
       ap.shootEnemy(enemy)
     }
   }
@@ -170,12 +163,12 @@ function targetEnemy(enemy, state, control) {
       // give up if we haven't spotted it yet
       if (distanceTo(state, targetedEnemy) < 200) {
         targetedEnemy = false
-        circleTheBoard(state, control)
+        searchTheBoard(state, control)
       } else {
         targetEnemy(targetedEnemy, state, control)
       }
     } else {
-      circleTheBoard(state, control)
+      searchTheBoard(state, control)
     }
 
 
