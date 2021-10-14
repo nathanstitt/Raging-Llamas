@@ -257,7 +257,7 @@ class Autopilot {
     if(Math.abs(angleDiff) < 2) {
 
       const bulletSize = (distance > maxDistance) ? 0.1 :
-            1.0 - (distance / maxDistance);
+            1.2 - (distance / maxDistance);
 
       this.control.SHOOT = bulletSize;
     }
