@@ -254,13 +254,13 @@ class Autopilot {
     this.control.GUN_TURN = 0.3 * angleDiff;
 
     // shoot when aiming at target
-    if(Math.abs(angleDiff) < 2) {
+    //if(Math.abs(angleDiff) < 2) {
 
       const bulletSize = (distance > maxDistance) ? 0.1 :
             1.0 - (distance / maxDistance);
 
       this.control.SHOOT = bulletSize;
-    }
+  //  }
   }
 
   extrapolatedPosition(inTicks) {

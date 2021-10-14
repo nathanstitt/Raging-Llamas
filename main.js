@@ -32,24 +32,30 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       turnDirection,
       turnTimer,
       direction,
+      bulletMap,
+      avoidDirection,
       targetedEnemy,
       collisionCoord = false,
       flop = 1,
       searchingTurnRadius = 0,
-      searchBoost = 200,
+      boostTimer = 100,
       bodyAngleDelta
 
   tank.init(function(settings, info) {
     id = info.id
     settings.SKIN = SKINS[id]
     ap = new Autopilot();
-
+    bulletMap = []
+    changeAvoidDirection();
     turnDirection = DIRECTIONS[id] // Math.random() < 0.5 ? 1 : -1;
     turnTimer = 0
     direction = 1
 
   });
 
+  function changeAvoidDirection() {
+    avoidDirection = Math.random() > 0.5 ? -1 : 1;
+  }
 
   function onNewEnemyDiscovered(enemy, control) {
     control.OUTBOX.push({
@@ -78,28 +84,86 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
   }
   function searchTheBoard(state, control) {
     control.RADAR_TURN = 1
-    if (searchBoost) {
-      control.BOOST = 1
-    }
+
     if (searchingTurnRadius > 0) {
-      searchBoost = 100
       control.TURN = -1.0
       searchingTurnRadius -= 1
       control.THROTTLE = 0.0
     } else {
-      if (searchBoost) {
-        searchBoost -= 1
-      }
       control.TURN = 0.0
       control.THROTTLE = 1.0
       if (state.collisions.wall || ap.isWallCollisionImminent(1)) {
         searchingTurnRadius = Math.randomRange(45, 90)
+        boostTimer = 50
       }
     }
   }
 
-function targetEnemy(enemy, state, control) {
-    searchBoost = 0
+  function avoidBullets(state, control) {
+
+    // find bullets using radar
+    for(let i in state.radar.bullets) {
+      const bullet = state.radar.bullets[i];
+      bullet.age = 0;
+      bulletMap[bullet.id] = bullet;
+
+      // calculate velocity components and distance between bullet and the tank
+      bullet.vx = bullet.speed * Math.cos(bullet.angle*(Math.PI/180));
+      bullet.vy = bullet.speed * Math.sin(bullet.angle*(Math.PI/180));
+      bullet.tankDistance = Math.distance(state.x, state.y, bullet.x, bullet.y);
+    }
+
+    var bulletCount = 0;
+    // predict position of all bullets scanned so far
+    for(let i in bulletMap) {
+      const bullet = bulletMap[i];
+      if(!bullet) { continue; }
+      // skip bullets that was not updated for long time
+      // if they were not spotted by radar recently, they
+      // probably are too far or hit something
+      if(bullet.age > 50) {
+        bulletMap[i] = null;
+        continue;
+      }
+      // track age of the bullet so they can be removed if out-dated
+      bullet.age++;
+      // predict position of the bullet basing on its velocity
+      bullet.x += bullet.vx;
+      bullet.y += bullet.vy;
+      // calculate distance between bullet and the tank. It will be used to
+      // find how fast the distance is changing
+      var newDistance = Math.distance(state.x, state.y, bullet.x, bullet.y);
+      bullet.approachingSpeed = bullet.tankDistance - newDistance;
+      bullet.tankDistance = newDistance;
+
+      // If distance between tank and the bullet is negative, it means that it
+      // is moving away from the tank and can be ignored (if will not hit it)
+      //
+      // In addition, if the speed of approaching the tank is too low, it means
+      // that the trajectory of the bullet is away of the tank and it will
+      // not hit it. Such bullets can be ignored too. The threshold value set
+      // experimentally to 3.85
+      if(bullet.approachingSpeed < 3.85) {
+        bulletMap[i] = null;
+        continue;
+      }
+      // count how many bullets are really dangerous and will probably hit the tank
+      bulletCount++;
+    }
+
+    // avoid bullets when any of them is aiming at you and
+    // you are rotated in a way that you can dodge it
+    if(bulletCount && Math.abs(bodyAngleDelta) < 45) {
+      boostTimer = 40
+
+      control.THROTTLE = avoidDirection;
+    } else {
+      // change direction of bullets dodging
+      changeAvoidDirection();
+    }
+  }
+
+  function targetEnemy(enemy, state, control) {
     const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
     ap.lookAtEnemy(enemy)
 		var enemyAngle = Math.deg.atan2(
@@ -107,29 +171,34 @@ function targetEnemy(enemy, state, control) {
       enemy.x - state.x
     )
 
-  if (eDistance > 200) {
-    ap.moveToPoint(enemy.x, enemy.y)
-  } else {
-    control.THROTTLE = 1 * flop;
-    if (state.collisions.wall || state.collisions.enemy || state.collisions.ally) {
-      flop = flop * -1;
+    if (eDistance > 200) {
+      ap.moveToPoint(enemy.x, enemy.y)
+    } else {
+      control.THROTTLE = 1 * flop;
+      if (state.collisions.wall || state.collisions.enemy || state.collisions.ally) {
+        flop = flop * -1;
+      }
+
+      bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
+      if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180; }
+      control.TURN = bodyAngleDelta * 0.2;
     }
-    // <- CIRCLE HERE
-    bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
-    if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180; }
-    control.TURN = bodyAngleDelta * 0.2;
-  }
 
     const aDistance = state.radar.ally ?
           Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
 
-  if ( (!aDistance) || eDistance < aDistance ) {
+    if ( (!aDistance) || eDistance < aDistance ) {
       ap.shootEnemy(enemy)
     }
+
   }
 
   tank.loop(function(state, control) {
     const wasOriginknown = ap.isOriginKnown()
+
+    if (boostTimer) { boostTimer -= 1 }
+    control.BOOST = boostTimer ? 1 : 0
+
 
     ap.update(state, control)
     readInbox(state)
@@ -171,6 +240,7 @@ function targetEnemy(enemy, state, control) {
       searchTheBoard(state, control)
     }
 
+    avoidBullets(state, control)
 
   });
 
