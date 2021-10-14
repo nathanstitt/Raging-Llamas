@@ -32,6 +32,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       turnDirection,
       turnTimer,
       direction,
+      flopTimer,
       bulletMap,
       avoidDirection,
       targetedEnemy,
@@ -50,6 +51,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     turnDirection = DIRECTIONS[id] // Math.random() < 0.5 ? 1 : -1;
     turnTimer = 0
     direction = 1
+    flopTimer = Math.randomRange(10, 50)
 
   });
 
@@ -163,6 +165,17 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
   }
 
+  function fireOnEnemy(enemy, state) {
+    if (!enemy) { return }
+
+    const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
+    const aDistance = state.radar.ally ?
+          Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
+    if ( (!aDistance) || eDistance < aDistance ) {
+      ap.shootEnemy(enemy)
+    }
+  }
+
   function targetEnemy(enemy, state, control) {
     const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
     ap.lookAtEnemy(enemy)
@@ -171,26 +184,24 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       enemy.x - state.x
     )
 
-    if (eDistance > 200) {
-      ap.moveToPoint(enemy.x, enemy.y)
+    if (eDistance > 80) {
+      let predictedPos = Autopilot.extrapolatedPosition(enemy, enemy.angle, enemy.speed, eDistance)
+      ap.moveToPoint(predictedPos.x, predictedPos.y)
     } else {
       control.THROTTLE = 1 * flop;
-      if (state.collisions.wall || state.collisions.enemy || state.collisions.ally) {
+      if (flopTimer == 0 || state.collisions.wall || state.collisions.enemy || state.collisions.ally) {
         flop = flop * -1;
+        boostTimer = 50
+        flopTimer = Math.randomRange(10, 100)
       }
+
+      flopTimer -= 1
 
       bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
       if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180; }
       control.TURN = bodyAngleDelta * 0.2;
     }
-
-    const aDistance = state.radar.ally ?
-          Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
-
-    if ( (!aDistance) || eDistance < aDistance ) {
-      ap.shootEnemy(enemy)
-    }
-
+    fireOnEnemy(enemy, state)
   }
 
   tank.loop(function(state, control) {
@@ -210,14 +221,16 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
 
     if (state.collisions.ally) {
-      control.TURN = state.angle + ((Math.random() * 20) - 10)
+      control.TURN = state.angle +Math.randomRange(10, 40)
       collisionCoord = { x: state.x, y: state.y }
     }
+
     if (collisionCoord) {
       control.THROTTLE = -1
-      if (distanceTo(state, collisionCoord) > 50) {
+      if (distanceTo(state, collisionCoord) > (id * 25)) {
         collisionCoord = false
       } else {
+        fireOnEnemy(state.radar.enemy, state)
         return
       }
     }
@@ -227,6 +240,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
         onNewEnemyDiscovered(state.radar.enemy, control)
       }
       targetEnemy(state.radar.enemy, state, control)
+      targetedEnemy = false
     } else if (targetedEnemy) {
       // we should have enemy on radar at this point and would be handled by above if stmt
       // give up if we haven't spotted it yet
@@ -240,6 +254,10 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       searchTheBoard(state, control)
     }
 
+    // while it seems cool, in practice it seems like this has limited utility
+    // the issue is that you can only avoid bullets you see on radar
+    // which has a narrow range, particularly if you're targeting an enemy and are
+    // both fast circling each other.
     avoidBullets(state, control)
 
   });
