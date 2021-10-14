@@ -9,18 +9,14 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
 
 // YOUR CODE GOES BELOW vvvvvvvv
 
-  const STRATEGIES = {
-    DODGE: 1,
-    SEEK: 2,
-  }
-
   const SKINS = {
     1: 'lava',
     2: 'tiger',
     3: 'desert',
   }
 
-
+  // How close we try to get to an enemy
+  // various other settings are based off it, such as radar lock and circle distance
   const CLOSE_TO_ENEMY_RANGE = 200
 
   // global vars to store state of tank
@@ -71,7 +67,8 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     })
   }
 
-  function searchTheBoard(state, control) {
+  function searchTheBoard() {
+    const { state, control } = ap
     control.RADAR_TURN = 1
 
     if (searchingTurnRadius > 0) {
@@ -138,7 +135,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
   function avoidAllyCollisions() {
     const { control, state: { angle, x, y, radar: { enemy }, collisions: { ally: collision } } } = ap
     if (collision) {
-      control.TURN = angle +Math.randomRange(10, 40)
+      control.TURN = angle +Math.randomRange(0, 20)
       collisionCoord = { x, y }
     }
 
@@ -179,32 +176,36 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       return
     }
 
+    // next priority is if we have a enemy on radar
     if(state.radar.enemy) {
       if (!targetedEnemy) {
+        // let our allies know about it
         onNewEnemyDiscovered(state.radar.enemy)
       }
       targetEnemy(state.radar.enemy)
       targetedEnemy = false
-    } else if (targetedEnemy) {
-      // we should have enemy on radar at this point and would be handled by above if stmt
-      // give up if we haven't spotted it yet
+
+    } else if (targetedEnemy) { // lower priority is if we have been notified about an enemy
+      // we should have enemy on radar at this point
+      // maybe it's been destroyed or zoomed out of range
       if (distanceTo(targetedEnemy) < CLOSE_TO_ENEMY_RANGE) {
         targetedEnemy = false
-        searchTheBoard(state, control)
+        searchTheBoard()
       } else {
-        targetEnemy(targetedEnemy, state, control)
+        targetEnemy(targetedEnemy)
       }
     } else {
-      searchTheBoard(state, control)
+      // search around the board if there's no known enemies
+      searchTheBoard()
     }
 
-    // while it seems cool, in practice this seems to have like this has limited utility
+    // while it seems cool, in practice this has limited utility
     // the issue is that you can only avoid bullets you see on radar
     // which has a narrow range, particularly if you're targeting an enemy and are
     // both fast circling each other.
     avoidBullets(state, control)
 
-    // first priority is enemy on radar, else whatever's been spotted by our allies
+    // first shoot at enemy on radar, else whatever's been spotted by our allies
     attemptToFire(state.radar.enemy || targetedEnemy)
   });
 
