@@ -16,22 +16,16 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
 
   const SKINS = {
     1: 'lava',
-    2: 'forest',
+    2: 'tiger',
     3: 'desert',
   }
-  const DIRECTIONS = {
-    1: 90,
-    2: 180,
-    3: 270,
-    4: 0, // won't have 4th tank "for real", but demo controls let you pick it
-  }
+
+
+  const CLOSE_TO_ENEMY_RANGE = 200
 
   // global vars to store state of tank
   let ap,
       id,
-      turnDirection,
-      turnTimer,
-      direction,
       flopTimer,
       bulletMap,
       avoidDirection,
@@ -48,34 +42,26 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     ap = new Autopilot();
     bulletMap = []
     changeAvoidDirection();
-    turnDirection = DIRECTIONS[id] // Math.random() < 0.5 ? 1 : -1;
-    turnTimer = 0
-    direction = 1
     flopTimer = Math.randomRange(10, 50)
-
   });
 
   function changeAvoidDirection() {
     avoidDirection = Math.random() > 0.5 ? -1 : 1;
   }
 
-  function onNewEnemyDiscovered(enemy, control) {
-    control.OUTBOX.push({
+  function onNewEnemyDiscovered(enemy) {
+    ap.control.OUTBOX.push({
       enemyDiscovered: enemy
     })
   }
 
-  function distanceTo(state, object) {
+  function distanceTo(object, state = ap.state) {
     return Math.distance(state.x, state.y, object.x, object.y)
   }
 
-  function readInbox(state) {
-    const msgs = state.radio.inbox
-    if (!msgs || !msgs.length) {
-      return
-    }
-
-    msgs.forEach(msg => {
+  function readInbox() {
+    const { state: { radio: { inbox = [] } } } = ap
+    inbox.forEach(msg => {
       if (msg.origin) {
         ap.setOrigin(msg.origin.x, msg.origin.y)
       }
@@ -84,6 +70,7 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       }
     })
   }
+
   function searchTheBoard(state, control) {
     control.RADAR_TURN = 1
 
@@ -101,6 +88,129 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
     }
   }
 
+  function attemptToFire(enemy) {
+    if (!enemy) { return }
+
+    const { state } = ap
+
+    const eDistance = distanceTo(enemy)
+    const aDistance = state.radar.ally ? distanceTo(state.radar.ally) : 0
+    if ( (!aDistance) || eDistance < aDistance ) {
+      ap.shootEnemy(enemy)
+    }
+  }
+
+  function targetEnemy(enemy) {
+    const { state, control } = ap
+
+    const eDistance = distanceTo(enemy)
+
+    // target enemy with radar once we're close to it
+    // otherwise we can keep radar spinning to dodge bullets
+    if (eDistance < CLOSE_TO_ENEMY_RANGE + 25) {
+      ap.lookAtEnemy(enemy)
+    }
+
+		const enemyAngle = Math.deg.atan2(enemy.y - state.y, enemy.x - state.x)
+
+    // keep moving toward enemy until a bit within range
+    if (eDistance > CLOSE_TO_ENEMY_RANGE - 25) {
+      const predictedPos = Autopilot.extrapolatedPosition(enemy, enemy.angle, enemy.speed, eDistance)
+      ap.moveToPoint(predictedPos.x, predictedPos.y)
+    } else {
+      // we're in range, so now we circle around, flipping
+      // back and forth randomly
+      control.THROTTLE = 1 * flop;
+      if (flopTimer == 0 || state.collisions.wall || state.collisions.enemy || state.collisions.ally) {
+        flop = flop * -1;
+        boostTimer = 50
+        flopTimer = Math.randomRange(10, 100)
+      }
+
+      flopTimer -= 1
+
+      bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
+      if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180; }
+      control.TURN = bodyAngleDelta * 0.2;
+    }
+  }
+
+  function avoidAllyCollisions() {
+    const { control, state: { angle, x, y, radar: { enemy }, collisions: { ally: collision } } } = ap
+    if (collision) {
+      control.TURN = angle +Math.randomRange(10, 40)
+      collisionCoord = { x, y }
+    }
+
+    if (collisionCoord) {
+      control.THROTTLE = -1
+      if (distanceTo(collisionCoord) > (id * 25)) {
+        collisionCoord = false
+      } else {
+        attemptToFire(enemy)
+        return true
+      }
+    }
+    return false
+  }
+
+  function setBoostState() {
+    if (boostTimer) { boostTimer -= 1 }
+    ap.control.BOOST = boostTimer ? 1 : 0
+  }
+
+  function updateAutoPilot(state, control) {
+    const wasOriginknown = ap.isOriginKnown()
+    ap.update(state, control)
+    if (!wasOriginknown && ap.isOriginKnown()) {
+      control.OUTBOX.push({
+        origin: ap.origin,
+      })
+    }
+  }
+
+
+  tank.loop(function(state, control) {
+    updateAutoPilot(state, control)
+    readInbox()
+    setBoostState()
+    // first do no harm, abort early if we've hit an ally
+    if (avoidAllyCollisions()) {
+      return
+    }
+
+    if(state.radar.enemy) {
+      if (!targetedEnemy) {
+        onNewEnemyDiscovered(state.radar.enemy)
+      }
+      targetEnemy(state.radar.enemy)
+      targetedEnemy = false
+    } else if (targetedEnemy) {
+      // we should have enemy on radar at this point and would be handled by above if stmt
+      // give up if we haven't spotted it yet
+      if (distanceTo(targetedEnemy) < CLOSE_TO_ENEMY_RANGE) {
+        targetedEnemy = false
+        searchTheBoard(state, control)
+      } else {
+        targetEnemy(targetedEnemy, state, control)
+      }
+    } else {
+      searchTheBoard(state, control)
+    }
+
+    // while it seems cool, in practice this seems to have like this has limited utility
+    // the issue is that you can only avoid bullets you see on radar
+    // which has a narrow range, particularly if you're targeting an enemy and are
+    // both fast circling each other.
+    avoidBullets(state, control)
+
+    // first priority is enemy on radar, else whatever's been spotted by our allies
+    attemptToFire(state.radar.enemy || targetedEnemy)
+  });
+
+  // YOUR CODE GOES ABOVE ^^^^^^^^
+
+  // code is from dodge AI
   function avoidBullets(state, control) {
 
     // find bullets using radar
@@ -164,105 +274,6 @@ class AdvancedState{constructor(t){this.state=t,this.absoluteRadarAngle=Math.deg
       changeAvoidDirection();
     }
   }
-
-  function fireOnEnemy(enemy, state) {
-    if (!enemy) { return }
-
-    const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
-    const aDistance = state.radar.ally ?
-          Math.distance(state.x, state.y, state.radar.ally.x, state.radar.ally.y) : 0
-    if ( (!aDistance) || eDistance < aDistance ) {
-      ap.shootEnemy(enemy)
-    }
-  }
-
-  function targetEnemy(enemy, state, control) {
-    const eDistance = Math.distance(state.x, state.y, enemy.x, enemy.y)
-    ap.lookAtEnemy(enemy)
-		var enemyAngle = Math.deg.atan2(
-      enemy.y - state.y,
-      enemy.x - state.x
-    )
-
-    if (eDistance > 80) {
-      let predictedPos = Autopilot.extrapolatedPosition(enemy, enemy.angle, enemy.speed, eDistance)
-      ap.moveToPoint(predictedPos.x, predictedPos.y)
-    } else {
-      control.THROTTLE = 1 * flop;
-      if (flopTimer == 0 || state.collisions.wall || state.collisions.enemy || state.collisions.ally) {
-        flop = flop * -1;
-        boostTimer = 50
-        flopTimer = Math.randomRange(10, 100)
-      }
-
-      flopTimer -= 1
-
-      bodyAngleDelta = Math.deg.normalize(enemyAngle - 90 - state.angle);
-      if(Math.abs(bodyAngleDelta) > 90) { bodyAngleDelta += 180; }
-      control.TURN = bodyAngleDelta * 0.2;
-    }
-    fireOnEnemy(enemy, state)
-  }
-
-  tank.loop(function(state, control) {
-    const wasOriginknown = ap.isOriginKnown()
-
-    if (boostTimer) { boostTimer -= 1 }
-    control.BOOST = boostTimer ? 1 : 0
-
-
-    ap.update(state, control)
-    readInbox(state)
-
-    if (!wasOriginknown && ap.isOriginKnown()) {
-      control.OUTBOX.push({
-        origin: ap.origin,
-      })
-    }
-
-    if (state.collisions.ally) {
-      control.TURN = state.angle +Math.randomRange(10, 40)
-      collisionCoord = { x: state.x, y: state.y }
-    }
-
-    if (collisionCoord) {
-      control.THROTTLE = -1
-      if (distanceTo(state, collisionCoord) > (id * 25)) {
-        collisionCoord = false
-      } else {
-        fireOnEnemy(state.radar.enemy, state)
-        return
-      }
-    }
-
-    if(state.radar.enemy) {
-      if (!targetedEnemy) {
-        onNewEnemyDiscovered(state.radar.enemy, control)
-      }
-      targetEnemy(state.radar.enemy, state, control)
-      targetedEnemy = false
-    } else if (targetedEnemy) {
-      // we should have enemy on radar at this point and would be handled by above if stmt
-      // give up if we haven't spotted it yet
-      if (distanceTo(state, targetedEnemy) < 200) {
-        targetedEnemy = false
-        searchTheBoard(state, control)
-      } else {
-        targetEnemy(targetedEnemy, state, control)
-      }
-    } else {
-      searchTheBoard(state, control)
-    }
-
-    // while it seems cool, in practice it seems like this has limited utility
-    // the issue is that you can only avoid bullets you see on radar
-    // which has a narrow range, particularly if you're targeting an enemy and are
-    // both fast circling each other.
-    avoidBullets(state, control)
-
-  });
-
-  // YOUR CODE GOES ABOVE ^^^^^^^^
 }
 
 window.myTank = myTank
